@@ -11,17 +11,17 @@ from shapecheck import check_shapes
 
 DType = T.Any
 
+
 # https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.calculate_gain
 GAIN: T.Dict[str, T.Callable[..., float]] = {
-    'linear': lambda _=None: 1.,
-    'conv': lambda _=None: 1.,
-    'sigmoid': lambda _=None: 1.,
-    'tanh': lambda _=None: 5. / 3.,
-    'relu': lambda _=None: np.sqrt(2.),
-    'leaky_relu': lambda ns: np.sqrt(2. / (1. + ns**2)),
-    'selu': lambda _=None: 3.0 / 3.0,
+    'linear': lambda *_: 1.0,
+    'conv': lambda *_: 1.0,
+    'sigmoid': lambda *_: 1.0,
+    'tanh': lambda *_: 5.0/3.0,
+    'relu': lambda *_: np.sqrt(2.0),
+    'leaky_relu': lambda ns: np.sqrt(2.0 / (1.0 + ns**2)),  # ns = negative_slope
+    'selu': lambda *_: 3.0/3.0,
 }
-
 
 def assert_dtype(f):
     @wraps(f)
@@ -31,44 +31,39 @@ def assert_dtype(f):
         return out
     return inner
 
-
 @assert_dtype
+@check_shapes('any...', 'any...')  # avoid unwanted broadcasting
 def lerp(a, b, pct):
-    chex.assert_equal_shape([a, b])  # avoid unwanted broadcasting
-    chex.assert_rank(pct, {0, a.ndim})  # don't want implicit 1-dimensions to be added.
+    chex.assert_rank(pct, {0, a.ndim})  # avoid implicit 1-dimensions
     return a + (b - a) * pct
-
 
 def truncated_normal_init(lower, upper):
     def init_fn(key, shape, dtype=jnp.float32):
         return jax.random.truncated_normal(key, lower, upper, shape, dtype)
     return init_fn
 
-
-class EqualizeLR(nn.Module):
-    layer: nn.Module
+class EqualizedLRConv(nn.Module):
+    conv: T.Union[nn.Conv, nn.ConvTranspose]
     gain: float = GAIN['conv']()
 
     @check_shapes(x='N,H,W,-1')
     @nn.compact
     def __call__(self, x: Array) -> Array:
-        assert isinstance(self.layer, (nn.Conv, nn.ConvTranspose))
+        assert isinstance(self.conv, (nn.Conv, nn.ConvTranspose))
 
         kernel = self.param(
             'kernel',
             nn.initializers.normal(stddev=1.0),
-            (*self.layer.kernel_size, x.shape[-1], self.layer.features)
+            (*self.conv.kernel_size, x.shape[-1], self.conv.features)
         )
         c = self.gain / np.sqrt(np.prod(kernel.shape[:-1]))
 
         variables = {'params': {'kernel': kernel * c}}
-        if self.layer.use_bias:
+        if self.conv.use_bias:
             variables['params']['bias'] = self.param(
-                'bias', nn.initializers.zeros, (self.layer.features,)
-            )
+                'bias', nn.initializers.zeros, (self.conv.features,))
 
-        return self.layer.apply(variables, x)
-
+        return self.conv.apply(variables, x)
 
 @assert_dtype
 @check_shapes(x='N,H,W,C', out_='N,H,W,C')
@@ -77,24 +72,21 @@ def pixel_norm(x: Array, eps: float = 1e-8) -> Array:
     inv_std = jax.lax.rsqrt(y.var(-1, keepdims=True) + eps)
     return (y * inv_std).astype(x.dtype)
 
-
 @assert_dtype
 @check_shapes(x='N,-1,-1,C', out_='N,-1,-1,C')
 def upsample(x: Array, factor: int = 2):
     n, w, h, c = x.shape
-    return jax.image.resize(x, (n, w * factor, h * factor, c), method='nearest')
-
+    return jax.image.resize(x, (n, w*factor, h*factor, c), method='nearest')
 
 @assert_dtype
 @check_shapes(x='N,-1,-1,C', out_='N,-1,-1,C')
 def downsample(x: Array, factor: int = 2):
-    n, w, h, c = x.shape
+    _, w, h, _ = x.shape
     assert w % factor == 0 and h % factor == 0, (w, h, factor)
     return nn.avg_pool(x, (factor, factor), strides=(factor, factor))
 
-
 @assert_dtype
-@check_shapes(x='N,-1,-1,-1', out_='N,-1,-1,-1')
+@check_shapes(x='N,H,W,-1', out_='N,H,W,-1')
 def append_minibatch_std(x: Array, group_size: int = 4, eps: float = 1e-8):
     n, h, w, c = x.shape
     gs = min(group_size, n)
@@ -104,7 +96,6 @@ def append_minibatch_std(x: Array, group_size: int = 4, eps: float = 1e-8):
     mean_std = per_group_std.mean((1, 2, 3), keepdims=True)  # (n/gs, 1, 1, 1)
     tiled = jnp.tile(mean_std.astype(x.dtype), (gs, h, w, 1))  # (n, h, w, 1)
     return jnp.concatenate([x, tiled], axis=-1)  # (n, h, w, c+1)
-
 
 class PGGANBlock(nn.Module):
     features: int
@@ -117,14 +108,13 @@ class PGGANBlock(nn.Module):
     @nn.compact
     def __call__(self, x: Array) -> Array:
         chex.assert_equal(x.dtype, self.dtype)
-        x = EqualizeLR(self.conv_cls(self.features, self.kernel_size, dtype=self.dtype),
-                       gain=GAIN['leaky_relu'](0.2))(x)
+        conv = self.conv_cls(self.features, self.kernel_size, dtype=self.dtype)
+        x = EqualizedLRConv(conv, gain=GAIN['leaky_relu'](0.2))(x)
         x = nn.leaky_relu(x, negative_slope=0.2)
         if self.norm_fn:
             x = self.norm_fn(x)
         chex.assert_equal(x.dtype, self.dtype)
         return x
-
 
 class PGGANGenerator(nn.Module):
     feature_sizes: T.Sequence[int]
@@ -133,33 +123,31 @@ class PGGANGenerator(nn.Module):
 
     @check_shapes(x='N,1,1,-1', out_='N,W,W,3')
     @nn.compact
-    def __call__(
-        self,
-        x: Array,
-        *,
-        stage: T.Optional[int] = None,  # compile time value
-        alpha: T.Optional[Scalar] = None
-    ) -> Array:
+    def __call__(self,
+                 x: Array, *,
+                 stage: T.Optional[int] = None,  # compile time value
+                 alpha: T.Optional[Scalar] = None) -> Array:
         if stage is None and self.stage is None:
             stage = len(self.feature_sizes)
         else:
             stage = nn.module.merge_param('stage', self.stage, stage)
-        stage = T.cast(int, stage)
+            stage = T.cast(int, stage)  # for mypy
+            assert 1 <= stage <= len(self.feature_sizes), stage
 
         chex.assert_equal(x.dtype, self.dtype)
         Block = partial(PGGANBlock, dtype=self.dtype)
         Conv = partial(nn.Conv, dtype=self.dtype)
         n, w, sz = x.shape[0], 4, self.feature_sizes[0]
 
-        x = Block(sz, (w, w), name=f'{w}x{w}_block_0',
-                  conv_cls=partial(nn.ConvTranspose, padding='VALID'))(x)
+        x = Block(w*w*sz, (1, 1), name=f'{w}x{w}_block_0')(x)
+        x = x.reshape((n, w, w, sz))
         x = Block(sz, name=f'{w}x{w}_block_1')(x)
         chex.assert_shape(x, (n, w, w, sz))
 
-        # Rely on JIT to prune unneeded rgb_out computations during inference.
-        # Need all of them so variables are created during initialization
-        rgb_out = EqualizeLR(Conv(3, (1, 1)), name=f'{w}x{w}_to_rgb',
-                             gain=GAIN['tanh']())(x)
+        # Need all of them to run at init to create the required variables.
+        # Rely on JIT to prune unneeded rgb_out computations otherwise.
+        rgb_out = EqualizedLRConv(
+            Conv(3, (1, 1)), name=f'{w}x{w}_to_rgb', gain=GAIN['tanh']())(x)
 
         for sz in self.feature_sizes[1:stage]:
             x = upsample(x, factor=2)
@@ -169,19 +157,18 @@ class PGGANGenerator(nn.Module):
             chex.assert_shape(x, (n, w, w, sz))
 
             skip_rgb_out = rgb_out
-            rgb_out = EqualizeLR(Conv(3, (1, 1), dtype=self.dtype),
-                                 name=f'{w}x{w}_to_rgb',
-                                 gain=GAIN['tanh']())(x)
+            rgb_out = EqualizedLRConv(
+                Conv(3, (1, 1)), name=f'{w}x{w}_to_rgb', gain=GAIN['tanh']())(x)
 
         if stage > 1 and alpha is not None:
-            # Order of upsample and to_rgb is swapped from original paper
+            # Order of upsample and to_rgb swapped from original paper.
+            # Should be mathematically equivalent.
             rgb_out = lerp(upsample(skip_rgb_out), rgb_out, alpha)
 
         rgb_out = jnp.tanh(rgb_out)
         chex.assert_shape(rgb_out, (n, w, w, 3))
         chex.assert_equal(rgb_out.dtype, self.dtype)
         return rgb_out
-
 
 class PGGANDiscriminator(nn.Module):
     feature_sizes: T.Sequence[int]  # reverse of Generator feature_sizes
@@ -190,45 +177,48 @@ class PGGANDiscriminator(nn.Module):
 
     @check_shapes(x='N,W,W,3', out_='N,1')
     @nn.compact
-    def __call__(
-        self,
-        x: Array,
-        *,
-        stage: T.Optional[int] = None,  # compile time value
-        alpha: T.Optional[Scalar] = None
-    ) -> Array:
+    def __call__(self,
+                 x: Array, *,
+                 stage: T.Optional[int] = None,  # compile time value
+                 alpha: T.Optional[Scalar] = None) -> Array:
         if stage is None and self.stage is None:
             stage = len(self.feature_sizes)
         else:
             stage = nn.module.merge_param('stage', self.stage, stage)
-        stage = T.cast(int, stage)
+            stage = T.cast(int, stage)  # for mypy
+            assert 1 <= stage <= len(self.feature_sizes), stage
 
         chex.assert_equal(x.dtype, self.dtype)
         n, w, *_ = x.shape
-        chex.assert_equal(w, 2**(stage + 1))
+        chex.assert_equal(w, 2**(stage+1))
         Block = partial(PGGANBlock, dtype=self.dtype, norm_fn=None)
         Conv = partial(nn.Conv, dtype=self.dtype)
 
-        # Rely on JIT to prune unneeded rgb_out computations during inference.
-        # Need all of them so needed variables are created during initialization
-        from_rgbs = [
-            EqualizeLR(Conv(sz, (1, 1)), name=f'{2**i}x{2**i}_from_rgb')(x)
-            for i, sz in enumerate(self.feature_sizes[::-1], start=2)
-        ]
-        x = from_rgbs[stage - 1]  # since stage starts at 1
+        if self.is_mutable_collection('params'):  # if initializing, create all from_rgbs
+            assert stage == len(self.feature_sizes) and alpha is None
+            for i, sz in enumerate(self.feature_sizes[::-1], start=2):
+                from_rgb = Block(sz, (1, 1), name=f'{2**i}x{2**i}_from_rgb')(x)
+            x = from_rgb
+        else:
+            # Can't use the same trick as in PGGANGenerator because the order
+            # of downsample and Block matters, since this Block has a non-linearity.
+            if stage > 1 and alpha is not None:
+                skip_from_rgb = Block(self.feature_sizes[-(stage-1)], (1, 1),
+                                      name=f'{w//2}x{w//2}_from_rgb')(downsample(x))
+            x = Block(self.feature_sizes[-stage], (1, 1), name=f'{w}x{w}_from_rgb')(x)
 
-        for i in range(stage - 1, 0, -1):
-            x = Block(self.feature_sizes[-i - 1], name=f'{w}x{w}_block_0')(x)
+        for i in range(stage-1, 0, -1):
+            x = Block(self.feature_sizes[-i-1], name=f'{w}x{w}_block_0')(x)
             x = Block(self.feature_sizes[-i], name=f'{w}x{w}_block_1')(x)
             x = downsample(x, factor=2)
             w //= 2
 
             if i == 0 and stage > 1 and alpha is not None:
-                x = lerp(downsample(from_rgbs[stage - 2]), x, alpha)
+                x = lerp(skip_from_rgb, x, alpha)
 
         sz = x.shape[-1]
         x = append_minibatch_std(x)
-        chex.assert_shape(x, (n, w, w, sz + 1))
+        chex.assert_shape(x, (n, w, w, sz+1))
 
         sz = self.feature_sizes[-1]
         x = Block(sz, name=f'{w}x{w}_block_0')(x)
@@ -236,6 +226,6 @@ class PGGANDiscriminator(nn.Module):
                   conv_cls=partial(Conv, padding=((0, 0), (0, 0))))(x)
         chex.assert_shape(x, (n, 1, 1, sz))
 
-        x = EqualizeLR(Conv(1, (1, 1)))(x).squeeze((1, 2))  # equivalent to Dense
+        x = EqualizedLRConv(Conv(1, (1, 1)))(x).squeeze((1, 2))
         chex.assert_equal(x.dtype, self.dtype)
         return x

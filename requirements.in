@@ -1,10 +1,10 @@
-flax @ git+https://github.com/google/flax.git@6111a4b2c5cb56520549c6dfc911135fbd8dbb7f
-optax @ git+https://github.com/deepmind/optax.git@b774ae9e8e66a7c46fc1f729a674cc916b64147a
-jax-resnet @ git+https://github.com/n2cholas/jax-resnet.git@196c71fbb2b24ff4f168e2762d419c7a2191b48c
-jax-utils @ git+https://github.com/n2cholas/jax-utils.git@17f728aeee14bf299cbda16b9727aedbc4329085
 chex
+flax
+hydra-core>=1.1.0.dev1
 jax
+jax-utils @ git+https://github.com/n2cholas/jax-utils.git
 jaxlib
-tensorflow
 numpy
+optax @ git+https://github.com/deepmind/optax.git
 shapecheck
+tensorflow-cpu

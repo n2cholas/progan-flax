@@ -1,5 +1,8 @@
 # Extra
 results/
+img_align_celeba/
+src/outputs/
+outputs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
