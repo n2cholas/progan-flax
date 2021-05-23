@@ -48,7 +48,8 @@ def get_dataset(*, batch_size, image_size, dtype, data_dir, distributed,
 
 @partial(jax.jit, static_argnums=3)
 def prep_images_for_tb(gen_imgs, gen_ema_imgs, data_imgs, max_outputs):
-    print('Compiling plotting...')
+    # Scales images from [-1, 1] to [0, 1]
+    print('Compiling prep_images_for_tb...')
     return (((gen_imgs + 1) / 2.0)[:max_outputs],
             ((gen_ema_imgs + 1) / 2.0)[:max_outputs],
             ((data_imgs + 1) / 2.0)[:max_outputs])
@@ -60,6 +61,7 @@ def main(cfg):
         cfg.batch_sizes, cfg.n_steps, cfg.feat_sizes, cfg.transition_pcts)
     assert len(set(map(len, per_stage_items))) == 1
     assert 2**(1+len(cfg.feat_sizes)) == cfg.final_image_size
+    # convert dtype_str explicitly due to https://github.com/google/jax/issues/6813
     dtype = jnp.dtype(cfg.dtype_str)
 
     # Initialize TrainState
@@ -69,12 +71,13 @@ def main(cfg):
         'g_optim': optax.adam(cfg.g_lr, b1=0.0, b2=0.99),
         'd_optim': optax.adam(cfg.g_lr, b1=0.0, b2=0.99)
     }
+    # Metrics will keep a running average of the listed scalar quantities
     metrics = ju.Metrics.from_names(
         'g_loss', 'd_loss', 'w_dist', 'gp', 'drift', 'alpha', 'stage')
     state = TrainState.create(**train_objs, metrics=metrics, dtype=dtype, **cfg)
 
-    # Train
     tb = tensorboard.SummaryWriter(log_dir=f'./{cfg.name}_tb')
+    # Reporter will log metrics and other values to TensorBoard and CSVs
     reporter = ju.Reporter(
         train_names=list(state.metrics.names()) + ['time/step'],
         val_names=[],
@@ -88,6 +91,7 @@ def main(cfg):
         tb.image('gen_ema_imgs', gen_ema_imgs, step, max_outputs=cfg.max_tb_images)
         tb.image('data_imgs', data_imgs, step, max_outputs=cfg.max_tb_images)
 
+    # Outer training loop cycles through each stage
     start_step, n_steps = 0, 0
     for stage, (t_pct, steps, bs) in enumerate(zip(
         cfg.transition_pcts, cfg.n_steps, cfg.batch_sizes), start=1):
@@ -96,9 +100,10 @@ def main(cfg):
         n_steps += steps
         img_sz = 2**(stage + 1)
 
+        # Prepare dataset, train step, and state for current stage.
         ds = get_dataset(batch_size=bs, image_size=img_sz, dtype=dtype, **cfg)
         alpha_sched = optax.linear_schedule(
-            0.0, 1.0, steps*t_pct, cfg.transition_delay)
+            0.0, 1.0, int(steps*t_pct), cfg.transition_delay)
         train_step = get_train_step(
             stage=stage, alpha_sched=alpha_sched, dtype=dtype, **train_objs, **cfg)
 
@@ -112,6 +117,7 @@ def main(cfg):
                               d_opt_state=train_objs['d_optim'].init(state.d_params),
                               step=0)
 
+        # Train for n_steps iterations
         state = ju.train(
             state=state,
             train_iter=ds,
@@ -126,6 +132,7 @@ def main(cfg):
         )
 
         cpu_state = jax.device_get(state)
+        # Save state and generator checkpoints seperately for easy use later.
         flax.training.checkpoints.save_checkpoint(
             f'./{cfg.name}', cpu_state, step=n_steps, keep=20)
         flax.training.checkpoints.save_checkpoint(

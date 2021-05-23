@@ -1,24 +1,24 @@
-name: pggan-celeba
+name: pggan-celeba  # folder name
 seed: 0
-distributed: True
+distributed: True  # distributed means multi-gpu
 dtype_str: bfloat16  # or float32
-data_dir: /home/nvadivelu/img_align_celeba/
+data_dir: /home/nvadivelu/img_align_celeba/  # contains celeba JPG images
 
 final_image_size: 128
-report_freq: 2000
-max_tb_images: 12
+report_freq: 2000  # how often to log to TensorBoard, stdout, and CSV
+max_tb_images: 12  # number of images to plot per reporting step
 
 # Hyperparameters
-g_lr: 0.00015
-d_lr: 0.0015
-lamb: 10
-eps_drift: 0.001
-noise_size: 512
-ma_beta: 0.999
+g_lr: 0.00015  # generator LR
+d_lr: 0.0015  # discriminator LR
+lamb: 10  # lambda coefficient for gradient penalty
+eps_drift: 0.001  # drift term coefficient
+noise_size: 512  # noise vector dimension
+ma_beta: 0.999  # moving average beta
 
 # Per-stage Hyperparameters
 batch_sizes: [512, 256, 128, 64, 32, 32]
 n_steps: [20_000, 40_000, 80_000, 160_000, 320_000, 640_000]
 feat_sizes: [512, 512, 256, 128, 64, 32]
-transition_pcts: [0.8, 0.8, 0.8, 0.8, 0.8, 0.8]
-transition_delay: 1000
+transition_pcts: [0.8, 0.8, 0.8, 0.8, 0.8, 0.8]  # proportion of n_steps to transition alpha from 0 to 1:
+transition_delay: 1000  # how many steps into the stage to start transition

@@ -33,8 +33,8 @@ class TrainState(flax.struct.PyTreeNode):
 
         noise = jax.random.normal(next(rngs), (4, 1, 1, noise_size), dtype=dtype)
         fake_images = jax.random.normal(next(rngs), (4, img_sz, img_sz, 3), dtype=dtype)
-        g_params = jax.jit(generator.init)(next(rngs), noise)['params'].unfreeze()
-        d_params = jax.jit(discriminator.init)(next(rngs), fake_images)['params'].unfreeze()
+        g_params = generator.init(next(rngs), noise)['params'].unfreeze()
+        d_params = discriminator.init(next(rngs), fake_images)['params'].unfreeze()
 
         return cls(
             g_params=g_params,
@@ -72,10 +72,10 @@ def get_train_step(*, generator, discriminator, g_optim, d_optim, stage, alpha_s
 
         (g_loss, gen_imgs), g_grads = jax.value_and_grad(
             g_loss_fn, has_aux=True)(state.g_params)
-        chex.assert_equal(g_loss.dtype, dtype)
-        chex.assert_equal(gen_imgs.dtype, dtype)
 
         def d_loss_fn(d_params):
+            # XLA will combine the redundant fake_preds computaton here with
+            # the one in g_loss_fn (CSE)
             fake_preds = discriminator.apply(
                 {'params': d_params}, gen_imgs, **kws).squeeze(-1)
             real_preds = discriminator.apply(
@@ -92,7 +92,7 @@ def get_train_step(*, generator, discriminator, g_optim, d_optim, stage, alpha_s
             slopes = jnp.sqrt((input_grad_fn(x_hat)**2).sum(axis=(1,2,3)))
 
             chex.assert_shape([slopes, fake_preds, real_preds], (len(batch),))
-            w_dist = jnp.mean(fake_preds - real_preds)
+            w_dist = jnp.mean(fake_preds - real_preds)  # wasserstein distance
             gp = jnp.mean((slopes - 1)**2)  # gradient penalty
             drift = jnp.mean(real_preds ** 2)  # drift penalty
             d_metrics = {'w_dist': w_dist, 'gp': gp, 'drift': drift}
@@ -100,18 +100,25 @@ def get_train_step(*, generator, discriminator, g_optim, d_optim, stage, alpha_s
 
         (d_loss, d_metrics), d_grads = jax.value_and_grad(
             d_loss_fn, has_aux=True)(state.d_params)
-        chex.assert_equal(d_loss.dtype, dtype)
 
         if distributed:
             (d_grads, g_grads) = jax.lax.pmean((d_grads, g_grads), axis_name='batch')
 
+        # Compute updates for both networks. Currently, the running stats (e.g. g^2 momentum)
+        # are updates for all parameters, even for early stages, which is wasteful.
+        # TODO: filter out gradients/parameters based on stage to avoid the wasteful work.
         g_updates, g_opt_state = g_optim.update(g_grads, state.g_opt_state, state.g_params)
         d_updates, d_opt_state = d_optim.update(d_grads, state.d_opt_state, state.d_params)
 
+        # Update parameters and compute exponential moving average for Generator
         g_params = optax.apply_updates(state.g_params, g_updates)
+        d_params = optax.apply_updates(state.d_params, d_updates)
         g_ema_params = jax.tree_multimap(partial(ju.lerp, pct=ma_beta),
                                          g_params, state.g_ema_params)
 
+        # Only need to generate images with EMA parameters when we want to
+        # report them to tensorboard, so we save some compute with this
+        # condition.
         gen_ema_imgs = jax.lax.cond(
             (state.step + 1) % report_freq == 0,
             lambda _: generator.apply({'params': g_ema_params}, noise, **kws),
@@ -121,7 +128,7 @@ def get_train_step(*, generator, discriminator, g_optim, d_optim, stage, alpha_s
         return state.replace(
             g_params=g_params,
             g_ema_params=g_ema_params,
-            d_params=optax.apply_updates(state.d_params, d_updates),
+            d_params=d_params,
             g_opt_state=g_opt_state,
             d_opt_state=d_opt_state,
             metrics=state.metrics.update(g_loss=g_loss, d_loss=d_loss, **d_metrics, **kws),

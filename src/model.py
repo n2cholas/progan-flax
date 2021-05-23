@@ -15,6 +15,9 @@ DType = T.Any
 
 class EqualizedLRConv(nn.Module):
     conv: T.Union[nn.Conv, nn.ConvTranspose]
+    # Paper used gain=sqrt(2), we use sqrt(2 / (1 + negative_slope^2)) for
+    # leaky_relu and 5/3 for Tanh based on
+    # https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.calculate_gain
     gain: float = ju.INIT_GAIN['conv']()
 
     @check_shapes(x='N,H,W,-1')
@@ -114,8 +117,8 @@ class PGGANGenerator(nn.Module):
         x = Block(sz, name=f'{w}x{w}_block_1')(x)
         chex.assert_shape(x, (n, w, w, sz))
 
-        # Need all of them to run at init to create the required variables.
-        # Rely on JIT to prune unneeded rgb_out computations otherwise.
+        # Need all of the to_rgbs to run at init to create the required variables.
+        # Rely on JIT to prune unneeded rgb_out computations during training/inference.
         rgb_out = EqualizedLRConv(
             Conv(3, (1, 1)), name=f'{w}x{w}_to_rgb', gain=ju.INIT_GAIN['tanh']()
         )(x)

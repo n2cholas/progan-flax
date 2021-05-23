@@ -6,8 +6,9 @@ defaults:
 name: pggan-celeba-dummy
 distributed: False
 final_image_size: 16
-dummy_data: True
+dummy_data: True  # random data instead of loading celeb-a
 
+# Small network/input sizes for test-runs
 noise_size: 10
 batch_sizes: [12, 8, 4]
 n_steps: [10, 12, 14]
