@@ -6,7 +6,7 @@ defaults:
 name: pggan-celeba-dummy
 distributed: False
 final_image_size: 16
-cache_ds: False
+dummy_data: True
 
 noise_size: 10
 batch_sizes: [12, 8, 4]

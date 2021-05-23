@@ -13,7 +13,8 @@ from model import PGGANDiscriminator, PGGANGenerator
 from training import TrainState, get_train_step
 
 
-def get_dataset(*, batch_size, image_size, dtype, data_dir, distributed, cache_ds, **_):
+def get_dataset(*, batch_size, image_size, dtype, data_dir, distributed, cache_ds,
+                dummy_data=False, **_):
     def decode_fn(s):
         img = tf.io.decode_jpeg(tf.io.read_file(s))
         img.set_shape([218, 178, 3])
@@ -22,11 +23,15 @@ def get_dataset(*, batch_size, image_size, dtype, data_dir, distributed, cache_d
         # img = tf.clip_by_value(img, -1.0, 1.0)
         return tf.cast(img, dtype)
 
-    ds = tf.data.Dataset.list_files(data_dir+'*.jpg', shuffle=False).map(decode_fn)
-    if cache_ds:
-        ds = ds.cache()
-
-    ds = ds.map(tf.image.random_flip_left_right).shuffle(batch_size*16).repeat()
+    if not dummy_data:
+        ds = (tf.data.Dataset.list_files(data_dir+'.jpg', shuffle=False)
+              .map(decode_fn).cache()
+              .map(tf.image.random_flip_left_right)
+              .shuffle(batch_size*16)
+              .repeat())
+    else:
+        dummy = tf.random.normal((image_size, image_size, 3), dtype=dtype)
+        ds = tf.data.Dataset.from_tensors(dummy).repeat()
 
     if distributed:
         per_core_bs, remainder = divmod(batch_size, len(jax.devices()))
