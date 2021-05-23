@@ -13,7 +13,7 @@ from model import PGGANDiscriminator, PGGANGenerator
 from training import TrainState, get_train_step
 
 
-def get_dataset(*, batch_size, image_size, dtype, data_dir, distributed, cache_ds,
+def get_dataset(*, batch_size, image_size, dtype, data_dir, distributed,
                 dummy_data=False, **_):
     def decode_fn(s):
         img = tf.io.decode_jpeg(tf.io.read_file(s))
@@ -24,7 +24,7 @@ def get_dataset(*, batch_size, image_size, dtype, data_dir, distributed, cache_d
         return tf.cast(img, dtype)
 
     if not dummy_data:
-        ds = (tf.data.Dataset.list_files(data_dir+'.jpg', shuffle=False)
+        ds = (tf.data.Dataset.list_files(data_dir+'*.jpg', shuffle=False)
               .map(decode_fn).cache()
               .map(tf.image.random_flip_left_right)
               .shuffle(batch_size*16)

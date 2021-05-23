@@ -1,9 +1,8 @@
 name: pggan-celeba
 seed: 0
-distributed: False
+distributed: True
 dtype_str: bfloat16  # or float32
-data_dir: /home/nvadivelu/pggan-flax/img_align_celeba/
-cache_ds: True
+data_dir: /home/nvadivelu/img_align_celeba/
 
 final_image_size: 128
 report_freq: 2000
