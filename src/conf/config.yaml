@@ -1,32 +1,25 @@
 name: pggan-celeba
 seed: 0
 distributed: False
-val_freq: null
 dtype_str: bfloat16  # or float32
 data_dir: /home/nvadivelu/pggan-flax/img_align_celeba/
+cache_ds: True
 
 final_image_size: 128
-report_freq: 1000
-max_outputs: 12  # for tb
+report_freq: 2000
+max_tb_images: 12
 
 # Hyperparameters
 g_lr: 0.00015
 d_lr: 0.0015
 lamb: 10
 eps_drift: 0.001
-noise_size: 64 # 512
+noise_size: 512
 ma_beta: 0.999
 
 # Per-stage Hyperparameters
-# batch_sizes: [512, 256, 128, 64, 32, 32]
-# n_steps: [20_000, 40_000, 80_000, 160_000, 320_000, 640_000]
-# feat_sizes: [512, 512, 256, 128, 64, 32]
-# transition_pcts: [0.8, 0.8, 0.8, 0.8, 0.8, 0.8]
-# transition_delay: 1000
-
-# Test per-stage Hyperparameters
-batch_sizes: [16, 16, 16, 16, 16, 16]
-n_steps: [10, 10, 10, 10, 10, 10]
-feat_sizes: [64, 32, 16, 8, 4, 2]
+batch_sizes: [512, 256, 128, 64, 32, 32]
+n_steps: [20_000, 40_000, 80_000, 160_000, 320_000, 640_000]
+feat_sizes: [512, 512, 256, 128, 64, 32]
 transition_pcts: [0.8, 0.8, 0.8, 0.8, 0.8, 0.8]
-transition_delay: 5
+transition_delay: 1000

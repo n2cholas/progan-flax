@@ -1,0 +1,16 @@
+# Low compute config for test runs
+
+defaults:
+  - config
+
+name: pggan-celeba-dummy
+distributed: False
+final_image_size: 16
+cache_ds: False
+
+noise_size: 10
+batch_sizes: [12, 8, 4]
+n_steps: [10, 12, 14]
+feat_sizes: [8, 4, 2]
+transition_pcts: [0.8, 0.8, 0.8]
+transition_delay: 5
