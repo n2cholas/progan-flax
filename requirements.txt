@@ -34,7 +34,6 @@ omegaconf==2.1.0rc1
 opt-einsum==3.3.0
 optax @ git+https://github.com/deepmind/optax.git@dc35f0bba829973d969cc3515c50941b6700bb8f
 Pillow==8.2.0
-pkg-resources==0.0.0
 protobuf==3.17.0
 pyasn1==0.4.8
 pyasn1-modules==0.2.8
