@@ -35,5 +35,6 @@ Each vertical grey line indicates going from one stage to the next.
 The spikes in time per step at the beginning of each stage correspond to compilation.
 The total training time was 11 hours 6 minutes on a TPUv3-8.
 Training for longer would likely give better results.
+Full training logs and checkpoints can be found [here](https://drive.google.com/drive/folders/1ljXYfGg85Mq5xvU76kJyEeIxN4Ce0Sue?usp=sharing).
 
 <img align="center" width="800" src="https://raw.githubusercontent.com/n2cholas/progan-flax/main/assets/training_curves.png">
