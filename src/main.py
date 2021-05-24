@@ -8,6 +8,7 @@ import jax_utils as ju
 import optax
 import tensorflow as tf
 from flax.metrics import tensorboard
+from omegaconf import OmegaConf
 
 from model import PGGANDiscriminator, PGGANGenerator
 from training import TrainState, get_train_step
@@ -15,6 +16,7 @@ from training import TrainState, get_train_step
 
 def get_dataset(*, batch_size, image_size, dtype, data_dir, distributed,
                 dummy_data=False, **_):
+    @tf.autograph.experimental.do_not_convert
     def decode_fn(s):
         img = tf.io.decode_jpeg(tf.io.read_file(s))
         img.set_shape([218, 178, 3])
@@ -69,7 +71,7 @@ def main(cfg):
         'generator': PGGANGenerator(cfg.feat_sizes, dtype=dtype),
         'discriminator': PGGANDiscriminator(cfg.feat_sizes[::-1], dtype=dtype),
         'g_optim': optax.adam(cfg.g_lr, b1=0.0, b2=0.99),
-        'd_optim': optax.adam(cfg.g_lr, b1=0.0, b2=0.99)
+        'd_optim': optax.adam(cfg.d_lr, b1=0.0, b2=0.99)
     }
     # Metrics will keep a running average of the listed scalar quantities
     metrics = ju.Metrics.from_names(
@@ -77,6 +79,7 @@ def main(cfg):
     state = TrainState.create(**train_objs, metrics=metrics, dtype=dtype, **cfg)
 
     tb = tensorboard.SummaryWriter(log_dir=f'./{cfg.name}_tb')
+    tb.hparams(OmegaConf.to_container(cfg, resolve=True))
     # Reporter will log metrics and other values to TensorBoard and CSVs
     reporter = ju.Reporter(
         train_names=list(state.metrics.names()) + ['time/step'],

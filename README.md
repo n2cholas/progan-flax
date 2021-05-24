@@ -1,12 +1,13 @@
 # Progressive Growing of GANs in Flax
 
 Flax (JAX) implementation of [Progressive Growing of GANs for Improved Quality, Stability, and Variation](https://research.nvidia.com/sites/default/files/pubs/2017-10_Progressive-Growing-of/karras2018iclr-paper.pdf).
-This code is meant to a starting point you can fork for your own needs rather than a 100% accurate reimplementation.
+This code is meant to a starting point you can fork for your own needs rather than a full re-implementation.
 
-Some curated samples below from the CelebA (not HQ) dataset.
-They're not as good as the original paper.
+Some curated samples below from the generator trained on the CelebA (not HQ) dataset.
+All hyperparameters are in `src/conf/config.yaml`.
+They're not as good as the original paper due to the significantly lower training time.
 
-<!-- TODO: insert examples -->
+<img align="center" src="https://github.com/n2cholas/progan-flax/tree/main/assets/samples.png">
 
 ## Usage
 
@@ -15,8 +16,8 @@ They're not as good as the original paper.
 2. Install the other dependencies (ideally in a pip environment) via `pip install -r requirements.txt`. Requires Python >=3.6.
 3. Run the code via `python src/main.py data_dir=<celeba directory>`.
 
-This was originally run on a TPUv3-8.
-You will need to adjust the hyperparameters in `src/config.yaml` for your local system (e.g. set `distributed: False`, decrease batch size, etc).
+The code was run on a TPUv3-8.
+You will need to adjust the hyperparameters in `src/conf/config.yaml` for your local system (e.g. set `distributed: False`, decrease batch size, etc).
 
 ## Differences from Original Paper
 
@@ -26,3 +27,13 @@ You will need to adjust the hyperparameters in `src/config.yaml` for your local 
 - Trained with `bfloat16` without loss scaling (as opposed to `float16` with loss scaling).
 - tanh activation for the Generator outputs.
 - Gain used for equalized learning rate adjusted for each activation instead of using `sqrt(2)` throughout (gains computed based on [PyTorch](https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.calculate_gain)).
+
+## Training Results
+
+Below are training curves with the configuration in `src/conf/config.yaml`.
+Each vertical grey line indicates going from one stage to the next.
+The spikes in time per step at the beginning of each stage correspond to compilation.
+The total training time was 11 hours 6 minutes on a TPUv3-8.
+Training for longer would likely give better results.
+
+<img align="center" src="https://github.com/n2cholas/progan-flax/tree/main/assets/training_curves.png">

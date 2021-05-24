@@ -2,7 +2,7 @@ chex
 flax
 hydra-core>=1.1.0.dev1
 jax
-jax-utils @ git+https://github.com/n2cholas/jax-utils.git@a745f10d4939666484275da9aaa586e99be9b5d5
+jax-utils @ git+https://github.com/n2cholas/jax-utils.git@cbbbadeb1f9e4bc8d817bec81f8be4be3494cdec
 jaxlib
 numpy
 optax @ git+https://github.com/deepmind/optax.git

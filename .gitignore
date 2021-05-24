@@ -3,6 +3,7 @@ results/
 img_align_celeba/
 src/outputs/
 outputs/
+multirun/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
