@@ -7,7 +7,7 @@ Some curated samples below from the generator trained on the CelebA (not HQ) dat
 All hyperparameters are in `src/conf/config.yaml`.
 They're not as good as the original paper due to the significantly lower training time.
 
-<img align="center" src="https://github.com/n2cholas/progan-flax/tree/main/assets/samples.png">
+<img align="center" src="https://raw.githubusercontent.com/n2cholas/progan-flax/main/assets/samples.png">
 
 ## Usage
 
@@ -36,4 +36,4 @@ The spikes in time per step at the beginning of each stage correspond to compila
 The total training time was 11 hours 6 minutes on a TPUv3-8.
 Training for longer would likely give better results.
 
-<img align="center" src="https://github.com/n2cholas/progan-flax/tree/main/assets/training_curves.png">
+<img align="center" width="800" src="https://raw.githubusercontent.com/n2cholas/progan-flax/main/assets/training_curves.png">
