@@ -20,7 +20,7 @@ idna==2.10
 importlib-resources==5.1.4
 jax==0.2.13
 jax-resnet==0.0.3
-jax-utils @ git+https://github.com/n2cholas/jax-utils.git@cbbbadeb1f9e4bc8d817bec81f8be4be3494cdec@
+jax-utils @ git+https://github.com/n2cholas/jax-utils.git@cbbbadeb1f9e4bc8d817bec81f8be4be3494cdec
 jaxlib==0.1.67
 keras-nightly==2.5.0.dev2021032900
 Keras-Preprocessing==1.1.2
